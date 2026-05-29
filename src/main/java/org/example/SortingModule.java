@@ -6,15 +6,17 @@ import java.util.Arrays;
 import java.util.Random;
 
 public class SortingModule extends BaseModulePanel {
-    private int[] array;
-    private int activeIndex = -1, compareIndex = -1, sortedBoundary = -1;
+    protected int[] array;
+    protected int activeIndex = -1, compareIndex = -1, sortedBoundary = -1;
 
+    // Threading & Control Flags
     private Thread sortingThread;
     private volatile boolean isSorting = false;
     private volatile boolean isPaused = false;
     private volatile boolean isStopped = false;
     private final Object pauseLock = new Object();
 
+    // UI Elements
     private JComboBox<String> algoSelector;
     private JTextField inputField;
     private DefaultListModel<String> pseudoCodeModel;
@@ -31,6 +33,7 @@ public class SortingModule extends BaseModulePanel {
 
     @Override
     protected void setupControls() {
+        // Algorithm Selector
         controlPanel.add(new JLabel("Algorithm:"));
         algoSelector = new JComboBox<>(new String[]{"Selection Sort", "Bubble Sort", "Insertion Sort", "Merge Sort", "Quick Sort"});
         algoSelector.addActionListener(e -> { stopSorting(); updateAlgorithmInfo(); });
@@ -38,6 +41,7 @@ public class SortingModule extends BaseModulePanel {
         controlPanel.add(algoSelector);
         controlPanel.add(Box.createRigidArea(new Dimension(0, 10)));
 
+        // Data Entry
         controlPanel.add(new JLabel("Manual Input (comma-separated):"));
         inputField = new JTextField();
         inputField.setMaximumSize(new Dimension(300, 30));
@@ -54,6 +58,7 @@ public class SortingModule extends BaseModulePanel {
         controlPanel.add(dataBtns);
         controlPanel.add(Box.createRigidArea(new Dimension(0, 20)));
 
+        // Media Controls (Play / Pause / Reset)
         JPanel mediaPanel = new JPanel(new GridLayout(1, 3, 5, 0));
         mediaPanel.setBackground(new Color(245, 245, 250));
 
@@ -81,6 +86,7 @@ public class SortingModule extends BaseModulePanel {
         controlPanel.add(mediaPanel);
         controlPanel.add(Box.createRigidArea(new Dimension(0, 20)));
 
+        // Pseudocode View
         controlPanel.add(new JLabel("Real-Time Pseudocode:"));
         pseudoCodeModel = new DefaultListModel<>();
         pseudoCodeList = new JList<>(pseudoCodeModel);
@@ -94,13 +100,14 @@ public class SortingModule extends BaseModulePanel {
         controlPanel.add(scrollPane);
         controlPanel.add(Box.createRigidArea(new Dimension(0, 10)));
 
+        // Live Commentary HUD
         controlPanel.add(new JLabel("Live Execution Commentary:"));
         commentaryArea = new JTextArea();
         commentaryArea.setEditable(false);
         commentaryArea.setLineWrap(true);
         commentaryArea.setWrapStyleWord(true);
         commentaryArea.setBackground(new Color(20, 20, 20));
-        commentaryArea.setForeground(new Color(0, 255, 0)); 
+        commentaryArea.setForeground(new Color(0, 255, 0)); // Terminal green
         commentaryArea.setFont(new Font("Monospaced", Font.BOLD, 12));
         commentaryArea.setMargin(new Insets(5, 5, 5, 5));
         JScrollPane commScroll = new JScrollPane(commentaryArea);
@@ -114,7 +121,10 @@ public class SortingModule extends BaseModulePanel {
         updateAlgorithmInfo();
     }
 
-    private void updateHUD(int codeLine, String commentary) {
+    // --- THREAD SYNCHRONIZATION & HUD LOGIC ---
+
+    protected void updateHUD(int codeLine, String commentary) {
+        if (pseudoCodeList == null || commentaryArea == null) return; // Guard for headless testing
         SwingUtilities.invokeLater(() -> {
             if (codeLine >= 0) pseudoCodeList.setSelectedIndex(codeLine);
             else pseudoCodeList.clearSelection();
@@ -122,14 +132,22 @@ public class SortingModule extends BaseModulePanel {
         });
     }
 
-    private void safeSleep() throws InterruptedException {
-        Thread.sleep(speedSlider.getValue());
+    protected void safeSleep() throws InterruptedException {
+        if (speedSlider != null) {
+            Thread.sleep(speedSlider.getValue());
+        }
         synchronized (pauseLock) {
             while (isPaused && !isStopped) {
-                pauseLock.wait(); 
+                pauseLock.wait();
             }
         }
         if (isStopped) throw new InterruptedException("Execution Stopped");
+    }
+
+    protected void refreshView() {
+        if (canvasPanel != null) {
+            canvasPanel.repaint();
+        }
     }
 
     private void togglePause() {
@@ -142,25 +160,29 @@ public class SortingModule extends BaseModulePanel {
         } else {
             pauseBtn.setText("⏸ Pause");
             pauseBtn.setBackground(new Color(255, 165, 0));
-            synchronized (pauseLock) { pauseLock.notify(); } 
+            synchronized (pauseLock) { pauseLock.notify(); }
         }
     }
 
     private void stopSorting() {
         isStopped = true;
         isPaused = false;
-        synchronized (pauseLock) { pauseLock.notify(); } 
+        synchronized (pauseLock) { pauseLock.notify(); }
 
         isSorting = false;
         SwingUtilities.invokeLater(() -> {
-            playBtn.setEnabled(true);
-            pauseBtn.setEnabled(false);
-            resetBtn.setEnabled(false);
-            pauseBtn.setText("⏸ Pause");
-            pauseBtn.setBackground(new Color(255, 165, 0));
+            if (playBtn != null) playBtn.setEnabled(true);
+            if (pauseBtn != null) {
+                pauseBtn.setEnabled(false);
+                pauseBtn.setText("⏸ Pause");
+                pauseBtn.setBackground(new Color(255, 165, 0));
+            }
+            if (resetBtn != null) resetBtn.setEnabled(false);
             updateHUD(-1, "Execution stopped. Ready.");
         });
     }
+
+    // --- DATA GENERATION ---
 
     private void generateRandomArray() {
         stopSorting();
@@ -185,8 +207,10 @@ public class SortingModule extends BaseModulePanel {
     private void resetState() {
         activeIndex = compareIndex = sortedBoundary = -1;
         updateHUD(-1, "Data loaded. Press Play to start.");
-        canvasPanel.repaint();
+        refreshView();
     }
+
+    // --- ALGORITHM EXECUTOR ---
 
     private void startAlgorithm() {
         if (isSorting || array == null) return;
@@ -213,15 +237,18 @@ public class SortingModule extends BaseModulePanel {
                     updateHUD(-1, "Sorting Complete! Array is now ordered.");
                 }
             } catch (InterruptedException e) {
+                // Thread was killed by Reset button safely
             } finally {
                 stopSorting();
-                canvasPanel.repaint();
+                refreshView();
             }
         });
         sortingThread.start();
     }
 
-    private void bubbleSort() throws InterruptedException {
+    // --- PROTECTED ALGORITHMS ACCESSIBLE TO TESTING ---
+
+    protected void bubbleSort() throws InterruptedException {
         int n = array.length;
         for (int i = 0; i < n - 1; i++) {
             updateHUD(0, "Starting Pass " + (i + 1) + ". Largest unsorted item will bubble to the top.");
@@ -229,14 +256,14 @@ public class SortingModule extends BaseModulePanel {
             for (int j = 0; j < n - i - 1; j++) {
                 activeIndex = j; compareIndex = j + 1;
                 updateHUD(2, "Comparing arr[" + j + "] (" + array[j] + ") and arr[" + (j+1) + "] (" + array[j+1] + ").");
-                canvasPanel.repaint(); safeSleep();
+                refreshView(); safeSleep();
 
                 if (array[j] > array[j + 1]) {
                     updateHUD(3, array[j] + " > " + array[j+1] + " is TRUE. Swapping elements.");
                     int temp = array[j];
                     array[j] = array[j + 1];
                     array[j + 1] = temp;
-                    canvasPanel.repaint(); safeSleep();
+                    refreshView(); safeSleep();
                 } else {
                     updateHUD(2, array[j] + " is not > " + array[j+1] + ". No swap needed.");
                     safeSleep();
@@ -248,7 +275,7 @@ public class SortingModule extends BaseModulePanel {
         }
     }
 
-    private void selectionSort() throws InterruptedException {
+    protected void selectionSort() throws InterruptedException {
         for (int i = 0; i < array.length - 1; i++) {
             updateHUD(0, "Pass " + (i+1) + ": Looking for the smallest element from index " + i + " to end.");
             safeSleep();
@@ -260,7 +287,7 @@ public class SortingModule extends BaseModulePanel {
             for (int j = i + 1; j < array.length; j++) {
                 activeIndex = min_idx; compareIndex = j;
                 updateHUD(3, "Checking if arr[" + j + "] (" + array[j] + ") < current minimum (" + array[min_idx] + ")");
-                canvasPanel.repaint(); safeSleep();
+                refreshView(); safeSleep();
 
                 if (array[j] < array[min_idx]) {
                     min_idx = j;
@@ -273,11 +300,11 @@ public class SortingModule extends BaseModulePanel {
             array[min_idx] = array[i];
             array[i] = temp;
             sortedBoundary = i;
-            canvasPanel.repaint(); safeSleep();
+            refreshView(); safeSleep();
         }
     }
 
-    private void insertionSort() throws InterruptedException {
+    protected void insertionSort() throws InterruptedException {
         for (int i = 1; i < array.length; i++) {
             int key = array[i];
             int j = i - 1;
@@ -287,21 +314,21 @@ public class SortingModule extends BaseModulePanel {
             while (j >= 0 && array[j] > key) {
                 activeIndex = j; compareIndex = j + 1;
                 updateHUD(2, array[j] + " > " + key + ". Shifting " + array[j] + " one position to the right.");
-                canvasPanel.repaint(); safeSleep();
+                refreshView(); safeSleep();
 
                 array[j + 1] = array[j];
                 updateHUD(3, "Shift complete.");
-                canvasPanel.repaint(); safeSleep();
+                refreshView(); safeSleep();
                 j--;
             }
             array[j + 1] = key;
             updateHUD(5, "Found position! Inserting KEY (" + key + ") at index " + (j+1) + ".");
-            canvasPanel.repaint(); safeSleep();
+            refreshView(); safeSleep();
             sortedBoundary = i;
         }
     }
 
-    private void mergeSort(int l, int r) throws InterruptedException {
+    protected void mergeSort(int l, int r) throws InterruptedException {
         if (l < r) {
             int m = l + (r - l) / 2;
             updateHUD(2, "Splitting array from index " + l + " to " + r + " at mid point " + m);
@@ -322,7 +349,7 @@ public class SortingModule extends BaseModulePanel {
         while (i < left.length && j < right.length) {
             activeIndex = k;
             updateHUD(5, "Comparing left[" + i + "] (" + left[i] + ") with right[" + j + "] (" + right[j] + ")");
-            canvasPanel.repaint(); safeSleep();
+            refreshView(); safeSleep();
 
             if (left[i] <= right[j]) {
                 array[k] = left[i]; i++;
@@ -331,13 +358,13 @@ public class SortingModule extends BaseModulePanel {
                 array[k] = right[j]; j++;
                 updateHUD(5, "Placed right element.");
             }
-            k++; canvasPanel.repaint(); safeSleep();
+            k++; refreshView(); safeSleep();
         }
-        while (i < left.length) { array[k] = left[i]; i++; k++; canvasPanel.repaint(); safeSleep(); }
-        while (j < right.length) { array[k] = right[j]; j++; k++; canvasPanel.repaint(); safeSleep(); }
+        while (i < left.length) { array[k] = left[i]; i++; k++; refreshView(); safeSleep(); }
+        while (j < right.length) { array[k] = right[j]; j++; k++; refreshView(); safeSleep(); }
     }
 
-    private void quickSort(int low, int high) throws InterruptedException {
+    protected void quickSort(int low, int high) throws InterruptedException {
         if (low < high) {
             updateHUD(2, "Partitioning array from index " + low + " to " + high);
             safeSleep();
@@ -356,20 +383,22 @@ public class SortingModule extends BaseModulePanel {
         for (int j = low; j < high; j++) {
             compareIndex = j; activeIndex = high;
             updateHUD(2, "Checking if arr[" + j + "] (" + array[j] + ") < Pivot (" + pivot + ")");
-            canvasPanel.repaint(); safeSleep();
+            refreshView(); safeSleep();
 
             if (array[j] < pivot) {
                 i++;
                 updateHUD(2, "Condition TRUE. Swapping arr[" + i + "] with arr[" + j + "]");
                 int temp = array[i]; array[i] = array[j]; array[j] = temp;
-                canvasPanel.repaint(); safeSleep();
+                refreshView(); safeSleep();
             }
         }
         updateHUD(2, "Partition loop done. Placing pivot in its final sorted position (" + (i+1) + ").");
         int temp = array[i + 1]; array[i + 1] = array[high]; array[high] = temp;
-        canvasPanel.repaint(); safeSleep();
+        refreshView(); safeSleep();
         return i + 1;
     }
+
+    // --- INFO & GRAPHICS ---
 
     private void updateAlgorithmInfo() {
         String algo = (String) algoSelector.getSelectedItem();
@@ -442,4 +471,8 @@ public class SortingModule extends BaseModulePanel {
             g2d.drawString(String.valueOf(array[i]), x + (barW/4), y - 5);
         }
     }
+
+    // Getters and Setters explicitly added for Test Assertions
+    public int[] getArray() { return this.array; }
+    public void setArray(int[] targetArray) { this.array = targetArray; }
 }
