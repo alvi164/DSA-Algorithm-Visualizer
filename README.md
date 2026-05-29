@@ -67,3 +67,19 @@ This project was built with a strong emphasis on maintainability and clean code 
    ```bash
    git clone [https://github.com/alvi164/DSA-Algorithm-Visualizer.git](https://github.com/alvi164/DSA-Algorithm-Visualizer.git)
    cd DSA-Algorithm-Visualizer
+
+   ## 🧪 Testing & Code Quality
+
+To ensure absolute algorithmic correctness and prevent regression bugs, this platform features a completely decoupled, headless unit testing suite powered by **JUnit 5**.
+
+### Test Execution Matrix
+The test suite isolates computation logic from the Java Swing Event Dispatch Thread (EDT), allowing assertions to verify states instantly without triggering GUI rendering delays.
+
+* **Algorithmic Correctness:** Validates structural stability for Bubble, Selection, Insertion, Merge, and Quick Sort routines.
+* **Edge-Case Boundaries:** Programmatically tests empty matrices, single-element structures, and uniform/identical element distributions.
+
+### Running Tests Locally
+To run the programmatic validation suite headlessly on your machine, execute the following standard Maven command in the root directory:
+
+```bash
+mvn test
